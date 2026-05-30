@@ -9,22 +9,31 @@ if TYPE_CHECKING:  # avoid a runtime import cycle
 
 @dataclass(frozen=True)
 class ServerRecord:
-    """One public NNTP server from the bundled ``servers.json`` list."""
+    """One public NNTP server from the bundled ``servers.json`` list.
+
+    ``anon_read``/``anon_post`` are live-verified flags for no-account access;
+    ``post`` mirrors ``anon_post`` for backwards compatibility.
+    """
 
     host: str
     port: int = 119
     tls_port: Optional[int] = None
     post: Optional[bool] = None
+    anon_read: Optional[bool] = None
+    anon_post: Optional[bool] = None
     auth: str = "none"
     notes: str = ""
 
     @classmethod
     def from_dict(cls, data: dict) -> "ServerRecord":
+        anon_post = data.get("anon_post", data.get("post"))
         return cls(
             host=data["host"],
             port=data.get("port", 119),
             tls_port=data.get("tls_port"),
-            post=data.get("post"),
+            post=data.get("post", anon_post),
+            anon_read=data.get("anon_read"),
+            anon_post=anon_post,
             auth=data.get("auth", "none"),
             notes=data.get("notes", ""),
         )

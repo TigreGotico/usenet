@@ -1,8 +1,10 @@
 """A single Usenet article, with lazy header/body retrieval."""
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 from typing import Dict, List, Optional
 
 import dateparser
+import nntplib
 
 
 class Article:
@@ -45,10 +47,15 @@ class Article:
 
     @property
     def date(self) -> Optional[datetime]:
-        dt = self.headers.get('Date')
-        if dt:
-            return dateparser.parse(dt)
-        return None
+        raw = self.headers.get('Date')
+        if not raw:
+            return None
+        # email.utils handles RFC-2822 news/mail dates, including the obsolete
+        # "-0000 (UTC)" comment form that trips dateparser.
+        try:
+            return parsedate_to_datetime(raw)
+        except (TypeError, ValueError):
+            return dateparser.parse(raw)
 
     @property
     def language(self) -> Optional[str]:
@@ -86,11 +93,17 @@ class Article:
 
     def _get_body(self, connection=None) -> None:
         connection = connection or self.connection
-        response, article = connection.body(self.article_id)
-        if article:
-            self._body = article.lines
+        # an article in a GROUP range may be cancelled/expired (4xx) — tolerate it
+        try:
+            response, article = connection.body(self.article_id)
+            self._body = article.lines if article else []
+        except (nntplib.NNTPError, OSError):
+            self._body = []
 
     def _get_headers(self, connection=None) -> None:
         connection = connection or self.connection
-        response, article = connection.head(self.article_id)
-        self._headers = article.lines
+        try:
+            response, article = connection.head(self.article_id)
+            self._headers = article.lines if article else []
+        except (nntplib.NNTPError, OSError):
+            self._headers = []

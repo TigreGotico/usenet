@@ -7,9 +7,10 @@ from usenet.server_entry import UsenetServer
 class FakeConn:
     """Records arguments instead of talking to a real server."""
 
-    def __init__(self):
+    def __init__(self, group_range=None):
         self.posted = None
         self.newnews_args = None
+        self._group_range = group_range  # (count, first, last)
 
     def post(self, body):
         self.posted = body
@@ -18,6 +19,10 @@ class FakeConn:
     def newnews(self, group, since):
         self.newnews_args = (group, since)
         return "230 list follows", []
+
+    def group(self, name):
+        count, first, last = self._group_range
+        return ("211 group selected", count, first, last, name)
 
 
 def _server_with(conn):
@@ -61,3 +66,17 @@ def test_get_new_news_defaults_to_five_days():
     server.get_new_news("comp.lang.python")
     _, since = conn.newnews_args
     assert since == date.today() - timedelta(days=5)
+
+
+def test_get_articles_returns_newest_first():
+    conn = FakeConn(group_range=(16, 10, 25))
+    server = _server_with(conn)
+    arts = server.get_articles("comp.lang.python", limit=5)
+    assert [a.article_id for a in arts] == [25, 24, 23, 22, 21]
+
+
+def test_get_articles_clamps_to_group_start():
+    conn = FakeConn(group_range=(2, 1, 2))
+    server = _server_with(conn)
+    arts = server.get_articles("misc.test", limit=10)
+    assert [a.article_id for a in arts] == [2, 1]

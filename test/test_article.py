@@ -34,6 +34,14 @@ def test_date_parsed():
     assert art.date.year == 2025
 
 
+def test_date_with_rfc2822_utc_comment():
+    # the obsolete "-0000 (UTC)" comment form that dateparser returns None for
+    art = Article("1", headers=[b"Date: Thu, 14 May 2026 01:06:51 -0000 (UTC)"],
+                  body=[])
+    assert isinstance(art.date, datetime)
+    assert (art.date.year, art.date.month, art.date.day) == (2026, 5, 14)
+
+
 def test_text_join():
     art = Article("1", headers=HEADERS, body=BODY)
     assert art.text == "first line\nsecond line"
@@ -57,3 +65,20 @@ def test_str_lines_pass_through():
     art = Article("1", headers=["Subject: already str"], body=["plain"])
     assert art.subject == "already str"
     assert art.text == "plain"
+
+
+def test_missing_article_is_tolerated():
+    # a cancelled/expired article number raises 4xx on head/body; must not crash
+    import nntplib
+
+    class GoneConn:
+        def head(self, article_id):
+            raise nntplib.NNTPTemporaryError("423 no such article")
+
+        def body(self, article_id):
+            raise nntplib.NNTPTemporaryError("423 no such article")
+
+    art = Article("999", connection=GoneConn())
+    assert art.subject == ""
+    assert art.text == ""
+    assert art.date is None

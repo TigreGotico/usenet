@@ -102,6 +102,24 @@ class UsenetServer:
             return None  # no such message (maybe it was deleted?)
         return Article(article.message_id, article.lines)
 
+    def get_articles(self, group: str, limit: int = 10) -> List[Article]:
+        """Return up to `limit` of the most recent articles in `group`.
+
+        Uses GROUP to select the article-number range, which works even where
+        NEWNEWS is disabled (the common case on public servers). Articles are
+        returned newest-first and fetch their head/body lazily.
+        """
+        try:
+            response, count, first, last, name = self.connection.group(group)
+        except _REQUEST_ERRORS:
+            return []
+        first, last = int(first), int(last)
+        if last < first:
+            return []
+        start = max(first, last - limit + 1)
+        return [Article(num, connection=self.connection)
+                for num in range(last, start - 1, -1)]
+
     def get_groups(self):
         response, groups = self.connection.list()
         return response, groups
