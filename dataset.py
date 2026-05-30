@@ -14,33 +14,26 @@ Usage:
 import argparse
 import json
 import sys
+from dataclasses import asdict
 from datetime import timedelta
-from typing import Dict, Iterator, Optional
+from typing import Iterator, Optional
 
 from usenet import UsenetServer
+from usenet.models import ArticleRecord
 
 
 def harvest(server_url: str, group: str, days: int = 30,
             user: Optional[str] = None, pswd: Optional[str] = None,
-            limit: Optional[int] = None) -> Iterator[Dict]:
-    """Yield article records from ``group`` going back ``days`` days."""
+            limit: Optional[int] = None) -> Iterator[ArticleRecord]:
+    """Yield :class:`ArticleRecord`s from ``group`` going back ``days`` days."""
     count = 0
     with UsenetServer(server_url, user=user, pswd=pswd, timeout=15) as server:
         for article in server.get_new_news(group, since=timedelta(days=days)):
             # pull headers + body while the connection is open
-            text = article.text
-            if not text.strip():
+            record = ArticleRecord.from_article(article, group)
+            if not record.text.strip():
                 continue
-            dt = article.date
-            yield {
-                "group": group,
-                "message_id": str(article.article_id),
-                "subject": article.subject,
-                "author": article.author,
-                "date": dt.isoformat() if dt else None,
-                "language": article.language,
-                "text": text,
-            }
+            yield record
             count += 1
             if limit and count >= limit:
                 return
@@ -68,7 +61,7 @@ def main(argv=None) -> int:
         for record in harvest(args.server, args.group, days=args.days,
                               user=args.user, pswd=args.password,
                               limit=args.limit):
-            out.write(json.dumps(record, ensure_ascii=False) + "\n")
+            out.write(json.dumps(asdict(record), ensure_ascii=False) + "\n")
             n += 1
     finally:
         if out is not sys.stdout:
