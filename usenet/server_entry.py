@@ -1,39 +1,57 @@
-import nntplib
+"""Thin wrapper around an NNTP connection.
+
+`nntplib` was removed from the standard library in Python 3.13 (PEP 594); on
+3.13+ the `standard-nntplib` backport provides the same module, so the import
+below works unchanged across supported versions.
+"""
 import socket
 from datetime import date, timedelta
+from typing import Dict, List, Optional
+
+import nntplib
+
 from usenet.article_entry import Article
+
+# errors that mean "this request failed", not "this server is broken"
+_REQUEST_ERRORS = (
+    nntplib.NNTPPermanentError,
+    nntplib.NNTPTemporaryError,
+    socket.timeout,
+    OSError,
+)
 
 
 class UsenetServer:
-    def __init__(self, url, user=None, pswd=None, timeout=3):
+    def __init__(self, url: str, user: Optional[str] = None,
+                 pswd: Optional[str] = None, timeout: int = 3):
         self.url = url
         self.timeout = timeout
         self.user = user
         self.password = pswd
         self._can_post = None
         self._connection = None
-        self._capabilities = {}
+        self._capabilities: Dict = {}
         self._dead = False
         self._welcome_message = None
 
     @property
-    def can_post(self):
+    def can_post(self) -> Optional[bool]:
         if not self.capabilities:
             return self._can_post
         return 'POST' in self.capabilities
 
     @property
-    def alive(self):
+    def alive(self) -> bool:
         return not self._dead
 
     @property
-    def connection(self):
+    def connection(self) -> Optional["nntplib.NNTP"]:
         # lazy connect
         if not self._connection and self.alive:
             self.connect()
         return self._connection
 
-    def connect(self):
+    def connect(self) -> None:
         try:
             if self.user and self.password:
                 self._connection = nntplib.NNTP(self.url,
@@ -42,18 +60,17 @@ class UsenetServer:
                                                 timeout=self.timeout)
             else:
                 self._connection = nntplib.NNTP(self.url, timeout=self.timeout)
-        except:
+        except (nntplib.NNTPError, OSError):
             self._dead = True
 
-    def ping(self):
+    def ping(self) -> bool:
         try:
-            self.connection.getwelcome()
-            return True
-        except:
+            return bool(self.connection and self.connection.getwelcome())
+        except (nntplib.NNTPError, OSError):
             return False
 
     @property
-    def welcome_message(self):
+    def welcome_message(self) -> str:
         if not self.connection:
             return "CONNECTION FAILED"
         if not self._welcome_message:
@@ -66,26 +83,42 @@ class UsenetServer:
                     self._can_post = True
         return self._welcome_message
 
-    def get_new_news(self, GROUP, since=None):
+    def get_new_news(self, group: str, since=None) -> List[Article]:
         if isinstance(since, timedelta):
             since = date.today() - since
         since = since or date.today() - timedelta(days=5)
         try:
-            response, articles = self.connection.newnews(GROUP, since)
+            response, articles = self.connection.newnews(group, since)
             return [Article(article_id, connection=self.connection)
                     for article_id in articles]
-        except (nntplib.NNTPPermanentError, nntplib.NNTPTemporaryError,
-                socket.timeout):
-            # NEWNEWS command disabled by administrator
+        except _REQUEST_ERRORS:
+            # NEWNEWS command disabled by administrator, or no connection
             return []
 
-    def get_article(self, article_id):
+    def get_article(self, article_id) -> Optional[Article]:
         try:
             response, article = self.connection.article(article_id)
-        except (nntplib.NNTPPermanentError, nntplib.NNTPTemporaryError,
-                socket.timeout):
+        except _REQUEST_ERRORS:
             return None  # no such message (maybe it was deleted?)
         return Article(article.message_id, article.lines)
+
+    def get_articles(self, group: str, limit: int = 10) -> List[Article]:
+        """Return up to `limit` of the most recent articles in `group`.
+
+        Uses GROUP to select the article-number range, which works even where
+        NEWNEWS is disabled (the common case on public servers). Articles are
+        returned newest-first and fetch their head/body lazily.
+        """
+        try:
+            response, count, first, last, name = self.connection.group(group)
+        except _REQUEST_ERRORS:
+            return []
+        first, last = int(first), int(last)
+        if last < first:
+            return []
+        start = max(first, last - limit + 1)
+        return [Article(num, connection=self.connection)
+                for num in range(last, start - 1, -1)]
 
     def get_groups(self):
         response, groups = self.connection.list()
@@ -96,32 +129,40 @@ class UsenetServer:
         return self.connection.newgroups(since)
 
     @property
-    def capabilities(self):
+    def capabilities(self) -> Dict:
         if self.connection and not self._capabilities:
-            self._capabilities = self.connection.getcapabilities()
+            try:
+                self._capabilities = self.connection.getcapabilities()
+            except (nntplib.NNTPError, OSError):
+                self._capabilities = {}
         return self._capabilities
 
-    def post(self, text, subject, group, from_address=None, headers=None):
-        #response, count, first, last, name = self.connection.group(group)
-        headers = headers or {}
+    def post(self, text: str, subject: str, group: str,
+             from_address: Optional[str] = None,
+             headers: Optional[Dict[str, str]] = None):
+        headers = dict(headers or {})
         headers["Subject"] = subject
         headers["Newsgroups"] = group
         if "From" not in headers or from_address:
             default_sender = "Anonymous User <anonymous@example.com>"
             headers["From"] = from_address or default_sender
         body = ""
-        for k, val in headers.items():
-            body += k + ": " + val + "\r\n"
+        for key, val in headers.items():
+            body += key + ": " + val + "\r\n"
         body += "\r\n" + text
         return self.connection.post(body.encode("utf-8"))
 
     def quit(self):
-        return self.connection.quit()
+        if self._connection:
+            return self._connection.quit()
 
-    def __enter__(self):
+    def __enter__(self) -> "UsenetServer":
         self.connect()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.connection:
-            self.quit()
+        if self._connection:
+            try:
+                self.quit()
+            except (nntplib.NNTPError, OSError):
+                pass

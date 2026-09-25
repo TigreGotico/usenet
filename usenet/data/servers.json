@@ -1,0 +1,13 @@
+{
+  "description": "Curated list of public, text-oriented NNTP servers. `anon_read`/`anon_post` were verified live with usenet.probe (reachability and policy drift over time; re-probe to refresh). Binary servers are intentionally excluded.",
+  "servers": [
+    {"host": "paganini.bofh.team", "port": 119, "tls_port": 563, "anon_read": true, "anon_post": true, "post": true, "auth": "none", "notes": "BOFH.team; accepts anonymous posts to test groups (verified)."},
+    {"host": "news.tcpreset.net", "port": 119, "tls_port": 563, "anon_read": true, "anon_post": true, "post": true, "auth": "none", "notes": "tcpreset; accepts anonymous posts to test groups (verified)."},
+    {"host": "news.neodome.net", "port": 119, "tls_port": 563, "anon_read": true, "anon_post": false, "post": false, "auth": "free account to post", "notes": "Neodome; anonymous reading, carries alt.anonymous.messages; posting needs an account."},
+    {"host": "news.samoylyk.net", "port": 119, "tls_port": 563, "anon_read": true, "anon_post": false, "post": false, "auth": "free account to post", "notes": "Samoylyk public feed; anonymous reading."},
+    {"host": "freenews.netfront.net", "port": 119, "tls_port": null, "anon_read": true, "anon_post": false, "post": false, "auth": "free account to post", "notes": "NetFront free news; anonymous reading."},
+    {"host": "news.bbs.nz", "port": 119, "tls_port": 563, "anon_read": true, "anon_post": false, "post": false, "auth": "free account to post", "notes": "BBS.nz; anonymous reading."},
+    {"host": "news.dizum.net", "port": 119, "tls_port": null, "anon_read": true, "anon_post": false, "post": false, "auth": "free account to post", "notes": "Dizum (sewer); anonymous reading; also runs a mail2news gateway."},
+    {"host": "news.eternal-september.org", "port": 119, "tls_port": 563, "anon_read": false, "anon_post": false, "post": false, "auth": "free account", "notes": "Eternal September; free registration required to read and post."}
+  ]
+}

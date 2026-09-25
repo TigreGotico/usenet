@@ -1,127 +1,102 @@
-import requests
+"""Scrapers for legacy public-NNTP-server directories.
+
+These directories are mostly dead; requests go through
+:func:`usenet.scrappers.transport.get_html`, which falls back to archive.org
+when a host no longer answers. The lists are essentially static — run a scraper
+once to seed a list, then prefer :func:`usenet.known_servers.get_known_servers`
+in production.
+"""
+from typing import Iterator
+
+from usenet.scrappers.transport import get_html
 from usenet.server_entry import UsenetServer
 
 
-def get_elfqrin(validate=True):
-    url = "https://www.elfqrin.com/hacklab/pages/nntpserv.php"
-    html = requests.get(url).text.split("c[i]=\"")
-    for c in html[1:]:
-        server = c.split('"; i++;')[0]
-        server = UsenetServer(server)
-        if validate:
-            server.ping()
-            if server.alive:
-                yield server
-        else:
+def _server(host: str, validate: bool) -> Iterator[UsenetServer]:
+    host = host.strip()
+    if not host:
+        return
+    server = UsenetServer(host)
+    if validate:
+        if server.ping():
             yield server
+    else:
+        yield server
 
 
-def get_balocs_list(validate=True):
-    url = "http://usenet__servers.tripod.com/doc/docpublic.htm"
-    html = requests.get(url).text
-    trs = html.split("<tr>")[2:]
-    for t in trs:
-        server, can_post = t.split("</td>")[:-1]
-        server = server.split(">")[-1].strip()
-        can_post = can_post.split(">")[-1].strip()
-        if not server:
+def get_elfqrin(validate: bool = True) -> Iterator[UsenetServer]:
+    html = get_html("https://www.elfqrin.com/hacklab/pages/nntpserv.php")
+    for c in html.split("c[i]=\"")[1:]:
+        host = c.split('"; i++;')[0]
+        yield from _server(host, validate)
+
+
+def get_balocs_list(validate: bool = True) -> Iterator[UsenetServer]:
+    html = get_html("http://usenet__servers.tripod.com/doc/docpublic.htm")
+    for t in html.split("<tr>")[2:]:
+        cells = t.split("</td>")[:-1]
+        if len(cells) < 2:
             continue
-        server = UsenetServer(server)
-        server._can_post = can_post
-        if validate:
-            server.ping()
-            if server.alive:
-                yield server
-        else:
+        host = cells[0].split(">")[-1].strip()
+        can_post = cells[1].split(">")[-1].strip()
+        for server in _server(host, validate):
+            server._can_post = can_post
             yield server
 
 
-def get_nyx(validate=True):
-    url = "http://www.nyx.net/~bkraft/"
-    html = requests.get(url).text
-    trs = html.split("<TR><TD><A HREF=\"")[1:-1]
-    for t in trs:
+def get_nyx(validate: bool = True) -> Iterator[UsenetServer]:
+    html = get_html("http://www.nyx.net/~bkraft/")
+    for t in html.split("<TR><TD><A HREF=\"")[1:-1]:
         if not t.startswith("http"):
             continue
         t = t.split('news://')[-1]
-        server = t.split('">')[0].rstrip("/").replace("http://", "")
-        server = UsenetServer(server)
-        if validate:
-            server.ping()
-            if server.alive:
-                yield server
-        else:
-            yield server
+        host = t.split('">')[0].rstrip("/").replace("http://", "")
+        yield from _server(host, validate)
 
 
-def get_usenettools_isp(validate=True):
-    url = "http://www.usenettools.net/ISP.htm"
-    html = requests.get(url).text
-    # this is ugly, but it works... dont want to drag bs4 requirement for
-    # this module that will almost never be used
+def get_usenettools_isp(validate: bool = True) -> Iterator[UsenetServer]:
+    html = get_html("http://www.usenettools.net/ISP.htm")
+    # ugly but avoids dragging bs4 in for a module that almost never runs
     for t in html.split('<p class="style4"'):
         t = t.split("</p>")[0].split('">')[-1].replace("<br>", "").replace(
             ">", "").strip()
         if "." not in t:
             continue
-        t2s = t.split(" ")
-        for t2 in t2s:
-            if not t2.strip() or t2.endswith(".") or "." not in t2:
+        for token in t.split(" "):
+            token = token.strip()
+            if not token or token.endswith(".") or "." not in token:
                 continue
-            server = UsenetServer(t2.strip())
-            if validate:
-                server.ping()
-                if server.alive:
-                    yield server
-            else:
-                yield server
+            yield from _server(token, validate)
 
 
-def get_sok(validate=True):
-    url = "https://sok.tripod.com/news.html"
-    html = requests.get(url).text
+def _news_url_table(url: str, validate: bool) -> Iterator[UsenetServer]:
+    html = get_html(url)
     for t in html.split("<tr>")[1:]:
         if "news://" not in t:
             continue
-        t = t.split("news://")[-1].split(">")[0].replace('"', "").rstrip("/")
-        server = UsenetServer(t)
-        if validate:
-            server.ping()
-            if server.alive:
-                yield server
-        else:
-            yield server
+        host = t.split("news://")[-1].split(">")[0].replace('"', "").rstrip("/")
+        yield from _server(host, validate)
 
 
-def get_alibis(validate=True):
-    url = "https://www.alibis.com/news/help/openlist2.html"
-    html = requests.get(url).text
-    for t in html.split("<tr>")[1:]:
-        if "news://" not in t:
-            continue
-        t = t.split("news://")[-1].split(">")[0].replace('"', "").rstrip("/")
-        server = UsenetServer(t)
-        if validate:
-            server.ping()
-            if server.alive:
-                yield server
-        else:
-            yield server
+def get_sok(validate: bool = True) -> Iterator[UsenetServer]:
+    yield from _news_url_table("https://sok.tripod.com/news.html", validate)
 
 
-def get_canue(validate=True):
+def get_alibis(validate: bool = True) -> Iterator[UsenetServer]:
+    yield from _news_url_table(
+        "https://www.alibis.com/news/help/openlist2.html", validate)
+
+
+def get_canue(validate: bool = True) -> Iterator[UsenetServer]:
     for i in range(1, 14):
         url = "http://www.canue.com/nntp/freenewsserver{:02d}.htm".format(i)
-        html = requests.get(url).text
+        try:
+            html = get_html(url)
+        except Exception:
+            continue
         for t in html.split("<li>")[1:]:
             if "news://" not in t:
                 continue
-            t = t.split("news://")[-1].split(">")[0]\
+            host = t.split("news://")[-1].split(">")[0] \
                 .replace('"', "").rstrip("/").replace("http://", "")
-            server = UsenetServer(t)
-            if validate:
-                server.ping()
-                if server.alive:
-                    yield server
-            else:
-                yield server
+            yield from _server(host, validate)
