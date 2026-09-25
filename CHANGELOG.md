@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1a1](https://github.com/TigreGotico/usenet/tree/0.1.1a1) (2026-09-25)
+
+[Full Changelog](https://github.com/TigreGotico/usenet/compare/0.1.0a2...0.1.1a1)
+
+**Merged pull requests:**
+
+- fix: call license-check.yml, the name the shared workflow has [\#5](https://github.com/TigreGotico/usenet/pull/5) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
 ## [0.1.0a2](https://github.com/TigreGotico/usenet/tree/0.1.0a2) (2026-05-30)
 
 [Full Changelog](https://github.com/TigreGotico/usenet/compare/f87a57d30e32014e712a3ffc89e7e06d3061a424...0.1.0a2)
